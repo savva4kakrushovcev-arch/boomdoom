@@ -196,6 +196,39 @@
     }
 
     var nes = null, running = false, C = null, MAP = {};
+    var audioCtx = null, audioNode = null, gainNode = null;
+    var queueL = [], queueR = [];
+
+    function ensureAudio() {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtx) {
+        audioCtx = new AC({ sampleRate: 44100 });
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.55;
+        gainNode.connect(audioCtx.destination);
+        var size = 2048;
+        audioNode = audioCtx.createScriptProcessor(size, 0, 2);
+        audioNode.onaudioprocess = function (ev) {
+          var left = ev.outputBuffer.getChannelData(0);
+          var right = ev.outputBuffer.getChannelData(1);
+          if (!running) {
+            for (var z = 0; z < left.length; z++) { left[z] = 0; right[z] = 0; }
+            return;
+          }
+          if (queueL.length > size * 6) {
+            queueL.splice(0, queueL.length - size * 3);
+            queueR.splice(0, queueR.length - size * 3);
+          }
+          for (var i = 0; i < left.length; i++) {
+            left[i] = queueL.length ? queueL.shift() : 0;
+            right[i] = queueR.length ? queueR.shift() : 0;
+          }
+        };
+        audioNode.connect(gainNode);
+      }
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    }
 
     function makeNES() {
       C = jsnes.Controller;
@@ -204,6 +237,7 @@
         A: C.BUTTON_A, B: C.BUTTON_B, START: C.BUTTON_START, SELECT: C.BUTTON_SELECT
       };
       nes = new jsnes.NES({
+        sampleRate: 44100,
         onFrame: function (buffer) {
           var d = imageData.data;
           for (var i = 0; i < buffer.length; i++) {
@@ -214,6 +248,10 @@
             d[i*4+3] = 255;
           }
           ctx.putImageData(imageData, 0, 0);
+        },
+        onAudioSample: function (l, r) {
+          queueL.push(l);
+          queueR.push(r);
         }
       });
     }
@@ -233,6 +271,9 @@
 
     function playROM(data, name) {
       if (!nes) makeNES();
+      ensureAudio();
+      queueL.length = 0;
+      queueR.length = 0;
       nes.loadROM(toBin(data));
       running = true;
       menuEl.style.display = "none";
