@@ -2,71 +2,357 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>DOOM (1993)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Retro Boy</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="https://v8.js-dos.com/latest/js-dos.css">
-  <script src="https://v8.js-dos.com/latest/js-dos.js"></script>
+  <script src="https://unpkg.com/jsnes/dist/jsnes.min.js"></script>
   <style>
-    html, body { margin:0; padding:0; height:100%; background:#000; color:#eee; font-family:system-ui,sans-serif; overflow:hidden; }
-    .wrap { height:100%; display:grid; grid-template-rows:auto 1fr auto; }
-    header, footer { padding:8px 12px; background:#111; font-size:12px; }
-    header { display:flex; justify-content:space-between; align-items:center; color:#e0a106; letter-spacing:.12em; text-transform:uppercase; }
-    footer { color:#888; }
-    #dos { width:100%; height:100%; min-height:240px; background:#000; }
-    .overlay { position:fixed; inset:0; display:grid; place-items:center; background:#000d; z-index:9; }
-    .overlay.hidden { display:none; }
-    .card { width:min(380px,92vw); background:#161616; border:1px solid #333; padding:22px 18px; text-align:center; }
-    .card h2 { color:#c0392b; letter-spacing:.14em; margin:0 0 8px; }
-    .card p { font-size:13px; color:#bbb; margin:0 0 16px; }
-    button { border:0; background:#c0392b; color:#fff; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:12px 18px; cursor:pointer; }
-    .err { color:#ff6b6b; font-size:13px; margin-top:10px; display:none; }
+    :root {
+      --shell: #c4c0a6;
+      --shell-dark: #9e9a82;
+      --shell-deep: #6e6b58;
+      --bezel: #1c1f16;
+      --lcd: #9bbc0f;
+      --lcd-dark: #0f380f;
+      --btn: #2a2a32;
+      --ab: #6b2940;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #1a1a16;
+      font-family: "Trebuchet MS", system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+    }
+    .gb {
+      width: min(100vw, 430px);
+      height: 100%;
+      background: linear-gradient(160deg, #d2cdb6 0%, var(--shell) 40%, var(--shell-dark) 100%);
+      border-radius: 18px 18px 56px 56px;
+      padding: calc(10px + env(safe-area-inset-top)) 16px 18px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto auto auto;
+      gap: 8px;
+      box-shadow: inset 0 2px 0 #efe9d2, inset 0 -8px 16px rgba(0,0,0,.18);
+    }
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      color: #4a4860;
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      padding: 0 6px;
+    }
+    .brand b { font-style: italic; letter-spacing: .08em; }
+    .screen-hood {
+      background: var(--bezel);
+      border-radius: 12px 12px 28px 28px;
+      padding: 12px 12px 18px;
+    }
+    .lcd-row { display: flex; justify-content: space-between; color: #667055; font-size: 9px; letter-spacing: .2em; margin-bottom: 6px; }
+    .lcd {
+      background: #8bac0f;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 256 / 240;
+    }
+    canvas, #menu {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+    }
+    canvas { image-rendering: pixelated; image-rendering: crisp-edges; background: #8bac0f; display: none; }
+    canvas.on { display: block; }
+    #menu {
+      background: var(--lcd);
+      color: var(--lcd-dark);
+      padding: 10px;
+      overflow: auto;
+      font-size: 13px;
+    }
+    #menu h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+    #menu button.rom {
+      display: block; width: 100%; text-align: left;
+      background: transparent; border: 0; border-bottom: 1px solid #6f8a0b;
+      color: var(--lcd-dark); padding: 8px 2px; font-weight: 700;
+    }
+    #menu .muted { opacity: .7; font-size: 12px; line-height: 1.35; }
+    .status { text-align: center; font-size: 11px; color: #3e3c32; min-height: 16px; }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      padding: 4px 10px 0;
+    }
+    .dpad {
+      width: 132px; height: 132px;
+      background: var(--btn);
+      border-radius: 50%;
+      position: relative;
+      box-shadow: 0 4px 0 #111;
+    }
+    .dpad button {
+      position: absolute; width: 42px; height: 42px;
+      background: #1b1b22; color: #888; border: 0; font-size: 16px;
+    }
+    .dpad .u { top: 6px; left: 45px; border-radius: 6px 6px 2px 2px; }
+    .dpad .d { bottom: 6px; left: 45px; border-radius: 2px 2px 6px 6px; }
+    .dpad .l { left: 6px; top: 45px; border-radius: 6px 2px 2px 6px; }
+    .dpad .r { right: 6px; top: 45px; border-radius: 2px 6px 6px 2px; }
+    .ab {
+      display: flex; gap: 14px; transform: rotate(-18deg); margin-right: 8px;
+    }
+    .ab button {
+      width: 62px; height: 62px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #8a3a54, var(--ab));
+      border: 0; color: #3a101c; font-weight: 900;
+      box-shadow: 0 5px 0 #3a1520;
+    }
+    .ss {
+      display: flex; justify-content: center; gap: 22px; padding: 6px 0 4px;
+    }
+    .ss button {
+      width: 64px; height: 16px; border-radius: 10px;
+      border: 0; background: #6c6a78; color: #2d2b38;
+      font-size: 8px; letter-spacing: .12em; font-weight: 800;
+      transform: rotate(-18deg);
+    }
+    .speaker {
+      display: grid; grid-template-columns: repeat(6, 8px); gap: 5px;
+      justify-content: end; padding: 0 16px 4px;
+    }
+    .speaker i { width: 8px; height: 8px; border-radius: 50%; background: #8d896f; box-shadow: inset 0 1px 1px #555; }
+    button { user-select: none; touch-action: none; -webkit-user-select: none; }
+    button:active { filter: brightness(.85); }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header><span>DOOM · 1993</span><span>js-dos</span></header>
-    <div id="dos"></div>
-    <footer>Стрелки — ход · Ctrl — огонь · Space — открыть · клик по экрану захватывает мышь</footer>
-  </div>
-  <div class="overlay" id="start">
-    <div class="card">
-      <h2>DOOM</h2>
-      <p>Первый DOOM через эмулятор DOS. После загрузки кликните в окно игры.</p>
-      <button type="button" id="play">Играть</button>
-      <div class="err" id="err"></div>
+  <div class="gb">
+    <div class="brand"><span>RETRO</span><b>DOT BOY</b></div>
+    <div class="screen-hood">
+      <div class="lcd-row"><span>● BATTERY</span><span>NES</span></div>
+      <div class="lcd">
+        <div id="menu">
+          <h2>Select Game</h2>
+          <div id="list"><p class="muted">Ищу игры в папке nes/…</p></div>
+        </div>
+        <canvas id="screen" width="256" height="240"></canvas>
+      </div>
+    </div>
+    <div class="status" id="status">Включите картридж</div>
+    <div class="controls">
+      <div class="dpad">
+        <button class="u" data-btn="UP">▲</button>
+        <button class="d" data-btn="DOWN">▼</button>
+        <button class="l" data-btn="LEFT">◀</button>
+        <button class="r" data-btn="RIGHT">▶</button>
+      </div>
+      <div class="ab">
+        <button data-btn="B">B</button>
+        <button data-btn="A">A</button>
+      </div>
+    </div>
+    <div class="ss">
+      <button data-btn="SELECT">SELECT</button>
+      <button data-btn="START">START</button>
+    </div>
+    <div class="speaker">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i><i></i><i></i>
     </div>
   </div>
+
   <script>
-    const tg = window.Telegram && window.Telegram.WebApp;
-    if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor("#000"); tg.setBackgroundColor("#000"); } catch(e){} }
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) { tg.ready(); tg.expand(); }
+    } catch (e) {}
 
-    const BUNDLE = "https://cdn.dos.zone/custom/dos/doom.jsdos";
-    const errEl = document.getElementById("err");
+    const status = document.getElementById("status");
+    const listEl = document.getElementById("list");
+    const menuEl = document.getElementById("menu");
+    const canvas = document.getElementById("screen");
+    const ctx = canvas.getContext("2d");
+    const imageData = ctx.createImageData(256, 240);
 
-    document.getElementById("play").onclick = async function () {
-      document.getElementById("start").classList.add("hidden");
-      try {
-        const dos = Dos(document.getElementById("dos"), {
-          url: BUNDLE,
-          autoStart: true,
-          kiosk: true
-        });
-        if (dos && dos.catch) {
-          dos.catch(function (e) {
-            showErr(e);
-          });
-        }
-      } catch (e) {
-        showErr(e);
-      }
-    };
+    function setStatus(t) { status.textContent = t; }
 
-    function showErr(e) {
-      document.getElementById("start").classList.remove("hidden");
-      errEl.style.display = "block";
-      errEl.textContent = "Не загрузилось: " + (e && e.message ? e.message : e);
+    function waitJSNES() {
+      return new Promise(function (resolve, reject) {
+        if (window.jsnes) return resolve();
+        var n = 0;
+        var id = setInterval(function () {
+          if (window.jsnes) { clearInterval(id); resolve(); }
+          else if (++n > 50) { clearInterval(id); reject(new Error("jsnes не загрузился")); }
+        }, 100);
+      });
     }
+
+    var nes = null, running = false, C = null, MAP = {};
+
+    function makeNES() {
+      C = jsnes.Controller;
+      MAP = {
+        UP: C.BUTTON_UP, DOWN: C.BUTTON_DOWN, LEFT: C.BUTTON_LEFT, RIGHT: C.BUTTON_RIGHT,
+        A: C.BUTTON_A, B: C.BUTTON_B, START: C.BUTTON_START, SELECT: C.BUTTON_SELECT
+      };
+      nes = new jsnes.NES({
+        onFrame: function (buffer) {
+          var d = imageData.data;
+          for (var i = 0; i < buffer.length; i++) {
+            var c = buffer[i];
+            d[i*4] = c & 255;
+            d[i*4+1] = (c >> 8) & 255;
+            d[i*4+2] = (c >> 16) & 255;
+            d[i*4+3] = 255;
+          }
+          ctx.putImageData(imageData, 0, 0);
+        }
+      });
+    }
+
+    function loop() {
+      if (running && nes) nes.frame();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    function toBin(buf) {
+      var b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+      var s = "";
+      for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      return s;
+    }
+
+    function playROM(data, name) {
+      if (!nes) makeNES();
+      nes.loadROM(toBin(data));
+      running = true;
+      menuEl.style.display = "none";
+      canvas.classList.add("on");
+      setStatus(name || "Playing");
+    }
+
+    function niceName(file) {
+      return file.replace(/\.nes$/i, "").replace(/[_-]+/g, " ");
+    }
+
+    function isNesName(name) {
+      return /\.nes$/i.test(name) && !/roms\.json$/i.test(name);
+    }
+
+    async function loadFromUrl(url, name) {
+      setStatus("Загрузка…");
+      var res = await fetch(url);
+      if (!res.ok) throw new Error("нет файла " + name);
+      playROM(await res.arrayBuffer(), name);
+    }
+
+    function showGames(files) {
+      if (!files.length) {
+        listEl.innerHTML = '<p class="muted">В nes/ пока нет игр.<br>Положите .nes и перечислите их в nes/roms.json</p>';
+        return;
+      }
+      listEl.innerHTML = "";
+      files.forEach(function (file) {
+        var b = document.createElement("button");
+        b.className = "rom";
+        b.type = "button";
+        b.textContent = "▸ " + niceName(file);
+        b.onclick = function () {
+          loadFromUrl("nes/" + encodeURIComponent(file), niceName(file)).catch(function (e) {
+            setStatus(e.message);
+          });
+        };
+        listEl.appendChild(b);
+      });
+    }
+
+    function normalizeList(data) {
+      if (Array.isArray(data)) return data.filter(isNesName);
+      if (data && Array.isArray(data.roms)) return data.roms.filter(isNesName);
+      if (data && typeof data === "object") return Object.keys(data).filter(isNesName);
+      return [];
+    }
+
+    async function discover() {
+      var files = [];
+      try {
+        var res = await fetch("nes/roms.json", { cache: "no-store" });
+        if (res.ok) files = normalizeList(await res.json());
+      } catch (e) {}
+
+      if (!files.length) {
+        try {
+          var dir = await fetch("nes/", { cache: "no-store" });
+          if (dir.ok) {
+            var html = await dir.text();
+            var re = /href=["']([^"']+\.nes)["']/ig, m;
+            while ((m = re.exec(html))) {
+              var name = decodeURIComponent(m[1].split("/").pop());
+              if (isNesName(name) && files.indexOf(name) < 0) files.push(name);
+            }
+          }
+        } catch (e) {}
+      }
+
+      showGames(files);
+      setStatus(files.length ? ("Игр: " + files.length) : "Добавьте ROM в nes/");
+    }
+
+    document.querySelectorAll("[data-btn]").forEach(function (el) {
+      var name = el.dataset.btn;
+      function down(ev) {
+        ev.preventDefault();
+        if (!nes) return;
+        nes.buttonDown(1, MAP[name]);
+        if (name === "SELECT" && ev.type !== "keydown") {
+          running = false;
+          canvas.classList.remove("on");
+          menuEl.style.display = "block";
+          setStatus("Меню");
+        }
+      }
+      function up(ev) {
+        ev.preventDefault();
+        if (!nes) return;
+        nes.buttonUp(1, MAP[name]);
+      }
+      el.addEventListener("touchstart", down, { passive: false });
+      el.addEventListener("touchend", up);
+      el.addEventListener("touchcancel", up);
+      el.addEventListener("mousedown", down);
+      el.addEventListener("mouseup", up);
+      el.addEventListener("mouseleave", up);
+    });
+
+    var keyMap = {
+      ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT",
+      KeyX: "A", KeyZ: "B", Enter: "START", ShiftRight: "SELECT"
+    };
+    window.addEventListener("keydown", function (e) {
+      var b = keyMap[e.code];
+      if (!b || !nes) return;
+      e.preventDefault();
+      nes.buttonDown(1, MAP[b]);
+    });
+    window.addEventListener("keyup", function (e) {
+      var b = keyMap[e.code];
+      if (!b || !nes) return;
+      nes.buttonUp(1, MAP[b]);
+    });
+
+    waitJSNES().then(function () { makeNES(); discover(); }).catch(function (e) {
+      setStatus(e.message);
+      listEl.innerHTML = '<p class="muted">Эмулятор не загрузился. Проверьте интернет.</p>';
+    });
   </script>
 </body>
 </html>
